@@ -1,0 +1,320 @@
+
+import java_cup.runtime.*;
+import java.util.*;
+import java.io.*;
+
+parser code {:
+    public boolean syntaxErrors;
+
+    public void syntax_error(Symbol current_token) {
+        report_error(
+            "Syntax error at line " + (current_token.left+1) + ", column "
+            + current_token.right, null
+        );
+    }
+    
+    // Variável para o contador de temporários
+    private int tempCount = 0;
+
+    // Variável para o contador de labels
+    private int labelCount = 0;
+
+    // Método para incrementar e gerar um novo temporário
+    private String newTemp() {
+        return "t" + (tempCount++);
+    }
+
+    // Método para incrementar e gerar um novo label
+    private String newLabel() {
+        return "L" + (labelCount++);
+    }
+
+    // Lista para armazenar TACs
+    List<NodeTac> TACList = new ArrayList<>(); 
+
+    // Lista para armazenar a tabela de simbolos
+    List<TabelaSimbolosNode> tabelaSimbolos = new ArrayList<>();
+:};
+
+// Declara as variaveis terminais
+terminal CLASSE;                                // Classe
+terminal BOOL, INT, VOID;                           // Tipos
+terminal IF, ELSE;                                      // Operadores condicionais
+terminal CONSTANTE, ID, NUMERO;                                             // Constante, identificador e numero
+terminal RETORNO;                                                           // Retorno
+terminal NOT, AND, OR;                                            // Operadores logicos
+terminal SOMA, MULTIPLICACAO;                                       // Operadores aritmeticos
+terminal OPIGUAL, OPMAIOR, OPMENOR;                                     // Operadores relacionais
+terminal IGUAL, PARESQ, PARDIR, CHAVEESQ, CHAVEDIR, PONTOEVIRGULA, VIRGULA; // Pontuacao
+terminal WHILE;                                                             //comando de repeticao while
+
+// Declara as variaveis nao terminais
+non terminal declaracaoClasse, declaracaoAtributo, declaracaoMetodo, metodos, atributos, argumentos;
+non terminal NodeTac tipoMetodo, comandos, comando, ifSemElse;
+non terminal NodeTac expressaoAritmetica, expressaoBooleana, comandoAritmetico;
+non terminal NodeTac termoAritmetico, termoBooleano, termo;
+
+// Define a precendencia
+precedence left OR, AND, NOT;
+precedence nonassoc OPIGUAL, OPMAIOR, OPMENOR;
+precedence left SOMA, MULTIPLICACAO;
+precedence left BOOL, INT;
+precedence left ELSE, IF, ID, RETORNO, WHILE;
+
+//Define a gramatica
+
+declaracaoClasse ::= CHAVEESQ CLASSE ID atributos metodos CHAVEDIR;
+
+atributos ::= declaracaoAtributo atributos | declaracaoAtributo; // nao gera TAC
+
+declaracaoAtributo ::= BOOL:tipo ID:id PONTOEVIRGULA
+{:
+    TabelaSimbolosNode atributo = new TabelaSimbolosNode(tipo.toString(), id.toString());
+    tabelaSimbolos.add(atributo);
+:};
+
+declaracaoAtributo ::= INT:tipo ID:id PONTOEVIRGULA
+{:
+    TabelaSimbolosNode atributo = new TabelaSimbolosNode(tipo.toString(), id.toString());
+    tabelaSimbolos.add(atributo);
+:};
+
+argumentos ::= BOOL:tipo ID:id VIRGULA argumentos
+{:
+    TabelaSimbolosNode atributo = new TabelaSimbolosNode(tipo.toString(), id.toString());
+    tabelaSimbolos.add(atributo);
+:};
+
+argumentos ::= INT:tipo ID:id VIRGULA argumentos
+{:
+    TabelaSimbolosNode atributo = new TabelaSimbolosNode(tipo.toString(), id.toString());
+    tabelaSimbolos.add(atributo);
+:};
+
+argumentos ::= BOOL:tipo ID:id
+{:
+    TabelaSimbolosNode atributo = new TabelaSimbolosNode(tipo.toString(), id.toString());
+    tabelaSimbolos.add(atributo);
+:};
+
+argumentos ::= INT:tipo ID:id
+{:
+    TabelaSimbolosNode atributo = new TabelaSimbolosNode(tipo.toString(), id.toString());
+    tabelaSimbolos.add(atributo);
+:};
+
+tipoMetodo ::= BOOL | INT | VOID;
+
+metodos ::= declaracaoMetodo metodos
+      | declaracaoMetodo;
+
+declaracaoMetodo ::= tipoMetodo ID PARESQ argumentos PARDIR CHAVEESQ comandos CHAVEDIR;
+
+comandos ::= comandos comando:com
+{:
+    RESULT = new NodeTac(com.place, com.code, "comandos1");
+    TACList.add(RESULT);
+:};
+comandos ::= comando:com
+{:
+    RESULT = new NodeTac(com.place, com.code, "comandos");
+    TACList.add(RESULT);
+:};
+
+ifSemElse ::= IF PARESQ termo:termo PARDIR comandos:body PONTOEVIRGULA
+{:
+    String trueLabel = newLabel();   
+
+    String code = "if"+termo.code+"goto("+trueLabel+")"+body.code;
+
+    RESULT = new NodeTac(null, code, "ifSemElse"); 
+
+    TACList.add(RESULT);  
+:};
+
+ifSemElse ::= ifSemElse ELSE comandos:body PONTOEVIRGULA
+{:
+    String falseLabel = newLabel();  
+
+    String code = falseLabel + ":"+body.code;
+
+    RESULT = new NodeTac(null, code, "ifSemElse"); 
+
+    TACList.add(RESULT);  
+    
+:};
+
+comando ::= comandoAritmetico:com
+{:
+    RESULT = new NodeTac(com.place, com.code, "comando");
+    TACList.add(RESULT);
+:};
+
+comando ::= RETORNO termo:termo PONTOEVIRGULA
+{:
+    RESULT = new NodeTac(termo.place, termo.code, "comando");
+    TACList.add(RESULT);
+:};
+
+comando ::= WHILE PARESQ expressaoBooleana:cond PARDIR comandos:body PONTOEVIRGULA
+{:
+    String trueLabel = newLabel();
+    String falseLabel = newLabel();
+
+    String code = "";
+    
+    if(cond.code == null)
+        code = trueLabel + ": if not(" + cond.place + ") " + "goto(" + falseLabel + ") " + body.code + "goto(" + trueLabel + ")"+ falseLabel + ":";
+    else
+        code = trueLabel + ": if not(" + cond.code + ") " + "goto(" + falseLabel + ") " + body.code + "goto(" + trueLabel + ")"+ falseLabel + ":";
+
+    RESULT = new NodeTac(null, code , "comando");
+
+    TACList.add(RESULT);
+:};
+
+comando ::= ifSemElse:ifSemElse
+{:
+    RESULT = new NodeTac(ifSemElse.place, ifSemElse.code, "comando");
+    TACList.add(RESULT);
+:};
+
+comandoAritmetico ::= ID:id IGUAL termo:termo PONTOEVIRGULA
+{:
+    int i = -1;
+    for(TabelaSimbolosNode no: tabelaSimbolos){
+        if(no.nome.equals(id.toString())){
+            i = tabelaSimbolos.indexOf(no);
+            break;
+        }
+    }
+    
+    RESULT = new NodeTac(null, "st[" + i +"]" + " := " + termo.place, "termo");
+    TACList.add(RESULT);
+:};
+
+termo ::= ID:id 
+{:
+    int i = -1;
+    for(TabelaSimbolosNode no: tabelaSimbolos){
+        if(no.nome.equals(id.toString())){
+            i = tabelaSimbolos.indexOf(no);
+            break;
+        }
+    }
+    
+    RESULT = new NodeTac("st[" + i +"]", null, "termo");
+    TACList.add(RESULT);
+:};
+
+termo ::= expressaoAritmetica:expr
+{:
+    RESULT = new NodeTac(expr.place, expr.code, "expressaoAritmetica");
+    TACList.add(RESULT);
+:};
+
+termo ::= expressaoBooleana:expr
+{:
+    RESULT = new NodeTac(expr.place, expr.code, "expressaoBooleana");
+    TACList.add(RESULT);
+:};
+
+expressaoAritmetica ::= termoAritmetico:termoA
+{:
+    RESULT = new NodeTac(termoA.place, termoA.code, "expressaoAritmetica");
+    TACList.add(RESULT);
+:};
+
+expressaoAritmetica ::= termo:t1 SOMA termo:t2
+{:
+    String temp = newTemp();
+
+    RESULT = new NodeTac(temp, temp + " := " + t1.place + " + " + t2.place, "expressaoAritmetica");
+    TACList.add(RESULT);
+:};
+
+expressaoAritmetica ::= termo:t1 MULTIPLICACAO termo:t2
+{:
+    String temp = newTemp();
+
+    RESULT = new NodeTac(temp, temp + " := " + t1.place + " * " + t2.place, "expressaoAritmetica");
+    TACList.add(RESULT);
+:};
+
+expressaoBooleana ::= termoBooleano:termoB
+{:
+    RESULT = new NodeTac(termoB.place, termoB.code, "expressaoBooleana");
+    TACList.add(RESULT);
+:};
+
+expressaoBooleana ::= termo:t1 OPMAIOR termo:t2
+{:
+    String temp = newTemp();
+
+    RESULT = new NodeTac(temp, temp + " := " + t1.place + " > " + t2.place, "expressaoBooleana");
+    TACList.add(RESULT);
+:};
+
+expressaoBooleana ::= termo:t1 OPMENOR termo:t2
+{:
+    String temp = newTemp();
+
+    RESULT = new NodeTac(temp, temp + " := " + t1.place + " < " + t2.place, "expressaoBooleana");
+    TACList.add(RESULT);
+:};
+
+expressaoBooleana ::= termo:t1 OPIGUAL termo:t2
+{:
+    String temp = newTemp();
+
+    RESULT = new NodeTac(temp, temp + " := " + t1.place + " == " + t2.place, "expressaoBooleana");
+    TACList.add(RESULT);
+:};
+
+expressaoBooleana ::= NOT termo:t1
+{:
+    String temp = newTemp();
+
+    RESULT = new NodeTac(temp, "not " + t1.place, "expressaoBooleana");
+    TACList.add(RESULT);
+:};
+
+expressaoBooleana ::= termo:t1 AND termo:t2
+{:
+    String temp = newTemp();
+
+    RESULT = new NodeTac(temp, t1.place + " and " + t2.place, "expressaoBooleana");
+    TACList.add(RESULT);
+:};
+
+expressaoBooleana ::= termo:t1 OR termo:t2
+{:
+    String temp = newTemp();
+
+    RESULT = new NodeTac(temp, t1.place + " or " + t2.place, "expressaoBooleana");
+    TACList.add(RESULT);
+:};
+
+termoAritmetico ::= NUMERO:num
+{:
+    RESULT = new NodeTac(num.toString(), null, "termoAritmetico");
+    TACList.add(RESULT);
+:};
+
+termoAritmetico ::= PARESQ expressaoAritmetica:expr PARDIR
+{:
+    RESULT = new NodeTac(expr.place, expr.code, "termoAritmetico");
+    TACList.add(RESULT);
+:};
+
+termoBooleano ::= CONSTANTE:constante
+{:
+    RESULT = new NodeTac(constante.toString(), null, "termoAritmetico");
+    TACList.add(RESULT);
+:};
+
+termoBooleano ::= PARESQ expressaoBooleana:expr PARDIR
+{:
+    RESULT = new NodeTac(expr.place, expr.code, "termoAritmetico");
+    TACList.add(RESULT);
+:};

@@ -1,0 +1,17 @@
+{class Example
+
+int counter;
+bool flag;
+
+void main() {
+        while (counter < 20)
+            if (flag)
+                temp = counter + 1;
+            ;
+            else
+                temp = counter + 2;
+          	;
+            
+        ;
+ 	}
+}
