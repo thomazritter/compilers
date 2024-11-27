@@ -248,8 +248,6 @@ public class parser extends java_cup.runtime.lr_parser {
     public boolean syntaxErrors;
 
     public void syntax_error(Symbol current_token) {
-    	System.out.println("Syntax error at line " + (current_token.left + 1) + ", column " + current_token.right);
-        System.out.println("Current token: " + current_token.sym);
         report_error(
             "Syntax error at line " + (current_token.left+1) + ", column "
             + current_token.right, null
